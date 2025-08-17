@@ -1,68 +1,87 @@
-# Marketing common data modelling challenge
-	Welcome to Marketing common data modelling challenge!
+Marketing Common Data Model (MCDM) Challenge
+This dbt project is a solution to the Marketing Common Data Model Challenge. The primary goal is to ingest raw advertising data from multiple platforms (Facebook, Bing, TikTok, Twitter), transform and unify it into a single, standardized model, and use this model to power a marketing performance dashboard.
 
-## Task
-	We use map data from various ad platforms into a single one. it can help marketers with questions like: "Where clicks better on facebook or tiktok?"
+🚀 Live Dashboard
+You can view the recreated marketing performance dashboard here:
 
-Imagine that model behind dashboard, is lost somehow. You need to rebuilt it. You have:
-	— raw data from the ad systems (seeds folder),
-	- the MCDM table structure for this report, 
-	- and [dashboard](https://lookerstudio.google.com/reporting/fa668749-b82f-41a8-a12e-f7d9c0733b57/page/tEnnC)
+[Link to your Looker Studio Dashboard] (<- Replace with your dashboard link)
 
+✨ Features
+Data Unification: Combines data from disparate ad platforms into a single source of truth.
 
-In this situation, we've got checklist that you can follow (or not):
-	- Begin a new project in dbt Cloud, utilizing Google Big Query as the DWH.
-	- Use the raw data from the ad platforms and the MCDM table structure for the ads_basic_performance report.
+Standardized Metrics: Calculates key performance indicators (KPIs) like CPC, Conversion Cost, and Cost Per Engagement consistently across all channels.
 
-### How to Submit
-please submit results via this form https://form.typeform.com/to/IP3EsX0N any question via: telegram:@kobzevvv  
--   A link to your dbt Cloud repository that contains the completed MCDM for the ads_basic_performance report.
--   A link to the recreated dashboard.
--   A brief set of instructions (in md file in your repo) for adding data from new ad platforms into your MCDM.
+Scalability: Designed to be easily extended with new data sources.
 
-## Hints:
-	- *Cost per engage* is just a spended sum divided by sum of engagements
-	- *Conversion cost* is calculated by dividing sum of spended by total conversions count
-	- *Impressions by channel* is a sum of impressions for each channel
-	- *CPC* gets like sum of spended divided by clicks count
+Data-Driven Insights: Powers a dashboard to answer questions like, "Which channel has a better click-through rate?" or "What is the overall conversion cost?"
 
-### Tools
-To complete this task, you might need the following tools:
--   dbt Cloud
--   Google Big Query
--   Google Looker Studio
+🛠️ Tech Stack
+Data Transformation: dbt (Data Build Tool)
 
-### Tool Instructions
-To help you get started, here are some resources on how to use the necessary tools:
--   dbt Courses:
-    -   [dbt Fundamentals](https://courses.getdbt.com/courses/fundamentals). Relevant chapters include:
-        -   Setting up dbt Cloud (17 minutes)
-        -   Models and Sources (40 minutes)
-        -   [dbt Cloud and BigQuery for Admins](https://courses.getdbt.com/courses/dbt-cloud-and-bigquery-for-admins) (35 minutes)
--   [How to Use Google BigQuery for FREE](https://levelup.gitconnected.com/how-to-use-google-bigquery-for-free-9c2a65e3a78c#)
-- How to create dashboard Google Looker Studio with Google Big Query
-		![](https://github.com/technomonah/dbt_mcdm_challenge/blob/main/how_to_export_gbq_to_looker.gif)
+Data Warehouse: Google BigQuery
 
+Data Visualization: Google Looker Studio
 
-### Additional Resources:
-- Learn more about dbt [in the docs](https://docs.getdbt.com/docs/introduction)
+📂 Repository Structure
+.
+├── dbt_project.yml       # dbt project configuration
+├── models                # Contains the dbt models
+│   └── ads_basic_performance.sql  # The final unified data model
+├── seeds                 # Raw data files (CSVs)
+│   ├── src_ads_bing_all_data.csv
+│   ├── src_ads_creative_facebook_all_data.csv
+│   ├── src_ads_tiktok_ads_all_data.csv
+│   └── src_promoted_tweets_twitter_all_data.csv
+└── README.md             # This file
 
-### How to Use the Repository
-This is the foundational repository for your project. Clone it and start your dbt Cloud from it.
+⚙️ Setup and Usage
+To get this project running in your own dbt Cloud environment:
 
-The repository includes raw data from various ad platforms, as well as the MCDM structure for the ads_basic_performance report, which are provided as seeds:
+Clone the Repository: Clone this repository and connect it to a new dbt Cloud project.
 
--   src_ads_bing_all_data
--   src_ads_creative_facebook_all_data
--   src_ads_tiktok_ads_all_data
--   src_promoted_tweets_twitter_all_data
--   mcdm_paid_ads_basic_performance_structure
+Configure BigQuery Connection: Set up a connection to your Google BigQuery instance in dbt Cloud.
 
-To build the seeds, run `dbt seed` in the dbt Cloud console. Once the seeds have been built, you can access the data using `ref()`. For example, you can use `select * from {{ ref('src_ads_bing_all_data')}}` to access data from the `src_ads_bing_all_data` seed.
+Load Raw Data: Run the dbt seed command to load the raw CSV data from the /seeds directory into your BigQuery project.
 
-### Q&A
-	Q: How to validate results for my model? 
-	A: Compare your dashboard with the dashboard from task. If some numbers doesn't match, then some fiels in your model got incorrect mapped  
+dbt seed
 
-	Q: What if there're no MCDM sctructure field in raw datasource data?
-	A: So you started understending the main goal of this task :-)	Suggest wich field or fields corresponds to MCDM ones by their meaning. If there're no such fields, then probably datasource just doesnt got them
+Run the Model: Execute the dbt run command to transform the raw data and create the final ads_basic_performance table.
+
+dbt run
+
+Connect to Looker Studio: Connect Google Looker Studio to your BigQuery project and use the ads_basic_performance table as the data source for your dashboard.
+
+🔌 How to Add a New Ad Platform
+This model is designed for easy extension. Follow these steps to add a new data source:
+
+Add Raw Data: Place the new platform's raw data as a .csv file in the /seeds directory. For example, src_ads_linkedin_all_data.csv.
+
+Update the Model: Open the models/ads_basic_performance.sql file and add a new Common Table Expression (CTE) to read, cast, and rename the columns from your new seed file to match the MCDM structure.
+
+-- Example CTE for a new platform
+, linkedin as (
+    select
+        cast(ad_id as string) as ad_id,
+        cast(ad_group_id as string) as adset_id,
+        cast(campaign_id as string) as campaign_id,
+        channel,
+        cast(clicks as int64) as clicks,
+        cast(date as date) as date,
+        cast(impressions as int64) as impressions,
+        cast(cost as float64) as spend,
+        cast(conversions as int64) as total_conversions,
+        -- Use `null` for fields that don't exist in the source
+        null as video_views
+    from {{ ref('src_ads_linkedin_all_data') }}
+)
+
+Union the Data: Add your new CTE to the final unioned_data CTE using UNION ALL.
+
+-- In the unioned_data CTE
+...
+union all
+select * from twitter
+union all
+select * from linkedin -- Add the new CTE here
+
+Re-run dbt: Run dbt seed and dbt run to incorporate the new data into your final table. Your dashboard will update automatically.
