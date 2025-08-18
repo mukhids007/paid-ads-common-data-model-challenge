@@ -1,151 +1,191 @@
-dashboard Link: https://lookerstudio.google.com/reporting/5218607d-06b9-4c8b-a353-8acc5dea73fe
-Instructions for Adding New Ad Platforms to MCDM
-This document provides step-by-step instructions for integrating data from new advertising platforms into the existing Marketing Common Data Modeling (MCDM) structure.
-Overview
-The current MCDM implementation supports four advertising platforms:
+Marketing common data modelling challenge — README
 
-Facebook (Meta Ads)
-TikTok Ads
-Twitter (Promoted Tweets)
-Bing Ads
+Quick links
 
-All platforms are unified into a single ads_basic_performance table with standardized fields and calculated metrics.
-Step-by-Step Process for Adding New Platforms
-1. Create the Raw Data Seed
-First, add your new platform's raw data as a dbt seed:
-sql-- seeds/src_ads_[platform_name]_all_data.csv
--- Upload your raw CSV data to the seeds folder
-2. Create Platform-Specific Transformation Model
-Create a new model file: models/[platform_name]_data.sql
-sql-- models/[platform_name]_data.sql
-WITH rename_[platform_name] AS (
-    SELECT
-        -- Map raw fields to standardized MCDM fields
-        raw_field_1 AS ad_id,
-        raw_field_2 AS adset_id,
-        -- ... continue mapping
-    FROM {{ ref('src_ads_[platform_name]_all_data') }}
-),
-[platform_name]_data AS (
-    SELECT
-        -- Required MCDM fields (see field mapping section below)
-        insert_date,
-        ad_id,
-        adset_id,
-        campaign_id,
-        channel,
-        creative_title,
-        clicks,
-        date,
-        impressions,
-        revenue,
-        spend,
-        conversions,
-        engagement,
-        -- Calculated metrics
-        ROUND(spend / NULLIF(engagement, 0), 2) AS engagement_cost,
-        ROUND(spend / NULLIF(conversions, 0), 2) AS conversion_cost,
-        ROUND(spend / NULLIF(clicks, 0), 2) AS cpc,
-        ROUND((clicks / NULLIF(impressions, 0)) * 100, 2) AS ctr,
-        ROUND(spend / NULLIF(impressions, 0), 2) AS cpi,
-        ROUND((engagement / NULLIF(impressions, 0)) * 100, 2) AS engagement_rate,
-        video_views
-    FROM rename_[platform_name]
+Looker Studio report:[ https://lookerstudio.google.com/reporting/5947fbbe-9611-43b2-9f54-9cc30138036b](https://lookerstudio.google.com/reporting/5218607d-06b9-4c8b-a353-8acc5dea73fe)
+
+Project overview
+
+This repo standardizes marketing/ad-platform data into a single unified model so analysts and marketers can answer questions like “Where do clicks perform better — Facebook or TikTok?”.
+
+The canonical table used by Looker Studio is ads_basic_performance (built in BigQuery via dbt). Raw platform CSVs live in seeds/ and are transformed with staging and marts models.
+
+Repo layout (high level)
+
+seeds/ — raw CSVs (one file per source / platform). These are loaded using dbt seed.
+
+models/staging/ — platform-specific staging models (stg_src_<platform>.sql) that standardize column names and types.
+
+models/marts/ — business-level marts and the main ads_basic_performance.sql which joins/unifies staging tables.
+
+models/macros/, tests/, etc. — helpers and tests.
+
+Prerequisites
+
+GCP project with BigQuery and permissions to create datasets/tables
+
+dbt (compatible version for this repo)
+
+Access to the Looker Studio report (viewer/editor as needed)
+
+Optionally, credentials or API access to pull CSVs directly from source platforms
+
+Adding new data (step-by-step)
+
+Prepare CSV
+
+Name convention: src_<platform>.csv (e.g. src_facebook.csv, src_tiktok.csv). Keep the file in seeds/.
+
+Include raw columns as exported by the platform. Don’t worry about renaming — staging models will remap.
+
+Load seed into dbt
+
+Run: dbt seed --select src_<platform> or dbt seed to load all seeds.
+
+Create a staging model
+
+Add models/staging/stg_src_<platform>.sql using an existing staging file as a template.
+
+Standardize column names to the canonical fields used across platforms (see canonical schema below).
+
+Cast types explicitly and add dbt_utils tests for non-null / accepted ranges where appropriate.
+
+Integrate into the mart
+
+Update models/marts/ads_basic_performance.sql to include the new staging model: map fields from stg_src_<platform> into the unified schema and union with other platforms.
+
+Run models and validate
+
+Run: dbt run --models marts.ads_basic_performance.
+
+Run tests: dbt test --models marts.ads_basic_performance.
+
+Open Looker Studio and validate metrics & filters.
+
+Canonical schema (recommended columns)
+
+Use these canonical column names in your staging models so the mart can union them easily:
+
+event_date (DATE or TIMESTAMP normalized to UTC)
+
+platform (e.g. Facebook, TikTok)
+
+campaign_id, campaign_name
+
+adgroup_id, adgroup_name
+
+ad_id, ad_name
+
+impressions (INT)
+
+clicks (INT)
+
+engagements (INT) — optional, platform-specific
+
+conversions (INT)
+
+spend (NUMERIC / FLOAT)
+
+revenue (NUMERIC) — if available
+
+currency (STRING) — optional
+
+Key metric definitions (use these formulas in SQL)
+
+Cost per engagement (CPE) = SUM(spend) / NULLIF(SUM(engagements), 0)
+
+Conversion cost (Cost per conversion / CPA) = SUM(spend) / NULLIF(SUM(conversions), 0)
+
+CPC (cost per click) = SUM(spend) / NULLIF(SUM(clicks), 0)
+
+Impressions by channel = SUM(impressions) FILTER (WHERE platform = 'Facebook') (or grouped by platform)
+
+Use NULLIF(..., 0) to avoid division-by-zero errors.
+
+Example SQL snippet (in ads_basic_performance.sql)
+
+select
+  platform,
+  event_date,
+  sum(spend) as spend,
+  sum(clicks) as clicks,
+  sum(engagements) as engagements,
+  sum(conversions) as conversions,
+  sum(spend) / nullif(sum(clicks),0) as cpc,
+  sum(spend) / nullif(sum(engagements),0) as cpe,
+  sum(spend) / nullif(sum(conversions),0) as cost_per_conversion
+from {{ ref('stg_src_unified') }}
+group by 1,2
+
+Staging template (example)
+
+Create models/staging/stg_src_example.sql using the following pattern:
+
+with raw as (
+  select * from {{ ref('src_example') }} -- seed name (dbt seed creates a relation named like the seed)
 )
-SELECT * FROM [platform_name]_data
-3. Update the Main MCDM Model
-Add your new platform to the ads_basic_performance model:
-sql-- models/ads_basic_performance.sql
--- Add this UNION ALL block to the existing model:
 
-UNION ALL
-SELECT
-    CAST(ad_id AS STRING) AS ad_id,
-    CAST(adset_id AS STRING) AS adset_id,
-    CAST(campaign_id AS STRING) AS campaign_id,
-    CAST(channel AS STRING) AS channel,
-    CAST(creative_title AS STRING) AS creative_title,
-    CAST(clicks AS INT64) AS clicks,
-    date,
-    CAST(impressions AS INT64) AS impressions,
-    CAST(revenue AS INT64) AS revenue,
-    CAST(spend AS INT64) AS spend,
-    CAST(conversions AS INT64) AS conversions,
-    CAST(engagement AS INT64) AS engagement,
-    CAST(video_views AS INT64) AS video_views
-FROM {{ ref('[platform_name]_data') }}
-Field Mapping Guidelines
-Required MCDM Fields
-MCDM FieldDescriptionData TypeNotesad_idUnique ad identifierSTRINGUse platform's ad IDadset_idAd set/group identifierSTRINGMay be NULL for some platformscampaign_idCampaign identifierSTRINGRequiredchannelPlatform nameSTRINGe.g., 'Facebook', 'TikTok'creative_titleAd creative title/textSTRINGUse main ad textclicksNumber of clicksINT64RequireddateDate of performanceDATERequiredimpressionsNumber of impressionsINT64RequiredrevenueRevenue generatedINT64May be NULLspendAmount spentINT64RequiredconversionsNumber of conversionsINT64Platform-specific definitionengagementTotal engagementsINT64Platform-specific calculationvideo_viewsVideo view countINT64May be NULL
-Platform-Specific Mapping Examples
-Engagement Field Logic
+select
+  cast(event_date as date) as event_date,
+  'Example' as platform,
+  cast(campaign_id as string) as campaign_id,
+  campaign_name,
+  cast(adgroup_id as string) as adgroup_id,
+  cast(ad_id as string) as ad_id,
+  cast(impressions as int64) as impressions,
+  cast(clicks as int64) as clicks,
+  cast(engagements as int64) as engagements,
+  cast(conversions as int64) as conversions,
+  cast(spend as numeric) as spend
+from raw
 
-Facebook: likes + comments + inline_link_clicks + shares + views
-TikTok: rt_installs + registrations (or define based on available engagement metrics)
-Twitter: Use existing engagements field
-Bing: Set to 0 (no engagement metrics available)
+Note: if your seed file name is src_example.csv, dbt will create a relation named src_example when you run dbt seed.
 
-Conversions Field Logic
+Common errors & troubleshooting
 
-Facebook: complete_registration + mobile_app_install + purchase + purchase_value + inline_link_clicks
-TikTok: conversions + skan_conversion
-Twitter: Set to NULL (not available)
-Bing: Use existing conv field
+Compilation Error: depends on a node named 'stg_src_facebook' — means a model references a staging model that doesn't exist or the seed name is different. Fix by:
 
-Handling Missing Fields
-When a platform doesn't provide certain MCDM fields:
+Confirm seeds/ contains src_facebook.csv.
 
-Set to NULL: For optional fields like revenue, video_views
-Set to 0: For numeric fields where zero makes sense (like engagement in Bing)
-Calculate if possible: Derive from available fields when logical
-Document assumptions: Always document your mapping decisions
+Confirm models/staging/stg_src_facebook.sql exists and is named correctly.
 
-Calculated Metrics
-The following metrics are automatically calculated in each platform model:
+Run dbt seed to ensure the seed relation exists.
 
-Cost per Engagement: spend / engagement
-Conversion Cost: spend / conversions
-Cost per Click (CPC): spend / clicks
-Click-through Rate (CTR): (clicks / impressions) * 100
-Cost per Impression (CPI): spend / impressions
-Engagement Rate: (engagement / impressions) * 100
+Division by zero in metrics — use NULLIF(sum(clicks), 0).
 
-Use NULLIF() to avoid division by zero errors.
-Testing Your Implementation
+Mismatched field types — cast explicitly in staging models.
 
-Run seeds: dbt seed to load your raw data
-Test individual model: dbt run --select [platform_name]_data
-Test full MCDM: dbt run --select ads_basic_performance
-Validate data: Compare key metrics with your platform's native reporting
-Check dashboard: Verify new platform appears correctly in Looker Studio
+Best practices
 
-Data Quality Considerations
+Keep seeds as raw exports and do transformations in staging models.
 
-Date formats: Ensure consistent DATE format across platforms
-Currency: Standardize currency (all platforms should use same currency)
-Null handling: Be consistent with NULL vs 0 for missing values
-Data types: Follow the casting patterns in the main model
-Field validation: Verify field mappings match your platform's data structure
+Use canonical column names across platforms for easy unioning.
 
-Common Troubleshooting
+Add dbt tests for critical fields (not null, unique keys where applicable, accepted ranges).
 
-Missing data in dashboard: Check if channel name matches exactly
-Incorrect metrics: Verify engagement and conversion field calculations
-Type errors: Ensure proper data type casting in final UNION
-Date parsing: Confirm date field is properly formatted as DATE type
+Document each staging model with description in the model file header so dbt docs is useful.
 
-Example Implementation Checklist
+Prefer incremental models for very large historical seeds and set a clear partition_by on event_date.
 
- Raw data added as seed file
- Platform-specific model created with proper field mapping
- Engagement logic defined based on available platform metrics
- Conversion logic defined based on platform capabilities
- All required MCDM fields mapped or set to appropriate defaults
- Calculated metrics implemented with NULL handling
- Platform added to main ads_basic_performance UNION
- Models run successfully without errors
- Data appears correctly in dashboard
- Metrics validated against platform reporting
+Keep timezone normalization consistent (store event_date in UTC or clearly document timezone).
 
-By following these instructions, you can successfully integrate any new advertising platform into the existing MCDM structure while maintaining data consistency and dashboard functionality.
+Looker Studio / BigQuery
 
+After dbt run, confirm the ads_basic_performance table exists in BigQuery (dataset and table names depend on dbt_project.yml profiles).
+
+Point Looker Studio to that BigQuery table and validate the fields and calculated metrics.
+
+Add Looker Studio calculated fields only for ad hoc reporting — prefer to keep canonical metrics in BigQuery.
+
+Example commands
+# load CSVs
+dbt seed --select src_facebook src_tiktok
+
+# build the mart
+dbt run --models marts.ads_basic_performance
+
+# run tests
+dbt test --models marts.ads_basic_performance
+
+# generate docs
+dbt docs generate && dbt docs serve
