@@ -1,3 +1,4 @@
+dashboard Link: https://lookerstudio.google.com/reporting/5218607d-06b9-4c8b-a353-8acc5dea73fe
 Instructions for Adding New Ad Platforms to MCDM
 This document provides step-by-step instructions for integrating data from new advertising platforms into the existing Marketing Common Data Modeling (MCDM) structure.
 Overview
@@ -147,3 +148,4 @@ Example Implementation Checklist
  Metrics validated against platform reporting
 
 By following these instructions, you can successfully integrate any new advertising platform into the existing MCDM structure while maintaining data consistency and dashboard functionality.
+
